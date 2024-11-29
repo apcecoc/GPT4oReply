@@ -1,8 +1,9 @@
 import aiohttp
+from markdown2 import markdown
 from telethon.tl.types import Message
 from .. import loader, utils
 
-__version__ = (1, 0, 1)
+__version__ = (1, 0, 2)
 
 #             █ █ ▀ █▄▀ ▄▀█ █▀█ ▀
 #             █▀█ █ █ █ █▀█ █▀▄ █
@@ -28,6 +29,12 @@ class GPT4oReplyMod(loader.Module):
         "error": "❌ <b>Failed to generate a response. Try again later.</b>",
         "invalid_message": "❌ <b>Please reply to a valid message.</b>",
     }
+
+    def _convert_markdown_to_html(self, text: str) -> str:
+        """
+        Converts Markdown to HTML using markdown2 library.
+        """
+        return markdown(text)
 
     @loader.command(ru_doc="Сгенерировать ответ на сообщение")
     async def gpt4oreply(self, message: Message):
@@ -68,7 +75,11 @@ class GPT4oReplyMod(loader.Module):
                         data = await resp.json()
                         if data.get("ok", False):
                             generated_reply = data.get("message", "❌ <b>API did not return a valid response.</b>")
-                            await utils.answer(message, generated_reply)
+
+                            # Convert Markdown to HTML
+                            formatted_reply = self._convert_markdown_to_html(generated_reply)
+
+                            await utils.answer(message, formatted_reply)
                         else:
                             await utils.answer(message, self.strings("error"))
                     else:
