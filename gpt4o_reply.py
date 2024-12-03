@@ -4,7 +4,7 @@ from .. import loader, utils
 
 __version__ = (1, 0, 2)
 
-#             █ █ ▀ █▄▀ ▄▀█ █▀█ ▀
+#             █ █ ▀ █▄▀ ▄▀█ █▀█ ▀ 
 #             █▀█ █ █ █ █▀█ █▀▄ █
 #              © Copyright 2024
 #           https://t.me/apcecoc
