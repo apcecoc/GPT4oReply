@@ -1,8 +1,9 @@
 import aiohttp
+import asyncio
 from telethon.tl.types import Message
 from .. import loader, utils
 
-__version__ = (1, 0, 2)
+__version__ = (1, 0, 3)
 
 #             █ █ ▀ █▄▀ ▄▀█ █▀█ ▀ 
 #             █▀█ █ █ █ █▀█ █▀▄ █
@@ -24,7 +25,6 @@ class GPT4oReplyMod(loader.Module):
 
     strings = {
         "name": "GPT4oReply",
-        "processing": "🤖 <b>Генерирую ответ...</b>",
         "error": "❌ <b>Не удалось сгенерировать ответ. Попробуйте позже.</b>",
         "invalid_message": "❌ <b>Пожалуйста, ответьте на действительное сообщение.</b>",
     }
@@ -43,38 +43,53 @@ class GPT4oReplyMod(loader.Module):
             await utils.answer(message, self.strings("invalid_message"))
             return
 
-        # Уведомляем, что бот "печатает"
-        async with message.chat.typing():
-            await utils.answer(message, self.strings("processing"))
+        api_url = "https://api.paxsenix.biz.id/ai/gpt4o"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        "Стиль написания максимально схожий и похожий на человека, чтобы не было заметно, "
+                        "что ты нейросеть. Максимальная реалистичность. В меру можно использовать при необходимости "
+                        "сленговые слова и нецензурную брань, но в меру. "
+                        f"Придумай ответ на это сообщение: {user_message}"
+                    ),
+                }
+            ]
+        }
 
-            api_url = "https://api.paxsenix.biz.id/ai/gpt4o"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": (
-                            "Стиль написания максимально схожий и похожий на человека, чтобы не было заметно, "
-                            "что ты нейросеть. Максимальная реалистичность. В меру можно использовать при необходимости "
-                            "сленговые слова и нецензурную брань, но в меру. "
-                            f"Придумай ответ на это сообщение: {user_message}"
-                        ),
-                    }
-                ]
-            }
+        async def animate_processing():
+            dots = ""
+            while not animation_done:
+                dots = dots + "." if len(dots) < 4 else ""
+                await utils.answer(message, dots)
+                await asyncio.sleep(0.5)
 
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(api_url, json=payload, headers=headers) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            if data.get("ok", False):
-                                generated_reply = data.get("message", "❌ <b>API не вернуло корректный ответ.</b>")
-                                await utils.answer(message, generated_reply)
-                            else:
-                                await utils.answer(message, self.strings("error"))
+        animation_done = False
+        try:
+            # Запускаем анимацию в отдельной задаче
+            animation_task = asyncio.create_task(animate_processing())
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_url, json=payload, headers=headers) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get("ok", False):
+                            generated_reply = data.get("message", "❌ <b>API не вернуло корректный ответ.</b>")
+                            animation_done = True  # Завершаем анимацию
+                            animation_task.cancel()
+                            await utils.answer(message, generated_reply)
                         else:
+                            animation_done = True
+                            animation_task.cancel()
                             await utils.answer(message, self.strings("error"))
-            except Exception as e:
-                await utils.answer(message, self.strings("error"))
-                raise e
+                    else:
+                        animation_done = True
+                        animation_task.cancel()
+                        await utils.answer(message, self.strings("error"))
+        except Exception as e:
+            animation_done = True
+            animation_task.cancel()
+            await utils.answer(message, self.strings("error"))
+            raise e
