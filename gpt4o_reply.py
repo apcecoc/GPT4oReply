@@ -68,6 +68,7 @@ class GPT4oReplyMod(loader.Module):
 
         animation_done = False
         try:
+            # Запускаем анимацию в отдельной задаче
             animation_task = asyncio.create_task(animate_processing())
 
             async with aiohttp.ClientSession() as session:
@@ -76,7 +77,7 @@ class GPT4oReplyMod(loader.Module):
                         data = await resp.json()
                         if data.get("ok", False):
                             generated_reply = data.get("message", "❌ <b>API не вернуло корректный ответ.</b>")
-                            animation_done = True
+                            animation_done = True  # Завершаем анимацию
                             animation_task.cancel()
                             await utils.answer(message, generated_reply)
                         else:
