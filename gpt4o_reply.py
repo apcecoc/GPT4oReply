@@ -3,18 +3,20 @@ import asyncio
 from telethon.tl.types import Message
 from .. import loader, utils
 
-__version__ = (1, 0, 3)
+__version__ = (1, 0, 4)
 
-#             █ █ ▀ █▄▀ ▄▀█ █▀█ ▀ 
-#             █▀█ █ █ █ █▀█ █▀▄ █
-#              © Copyright 2024
+#        █████  ██████   ██████ ███████  ██████  ██████   ██████ 
+#       ██   ██ ██   ██ ██      ██      ██      ██    ██ ██      
+#       ███████ ██████  ██      █████   ██      ██    ██ ██      
+#       ██   ██ ██      ██      ██      ██      ██    ██ ██      
+#       ██   ██ ██       ██████ ███████  ██████  ██████   ██████
+
+#              © Copyright 2025
 #           https://t.me/apcecoc
 #
 # 🔒      Licensed under the GNU AGPLv3
 # 🌐 https://www.gnu.org/licenses/agpl-3.0.html
 
-# meta pic: https://example.com/api_icon.png
-# meta banner: https://example.com/api_banner.jpg
 # meta developer: @apcecoc
 # scope: hikka_only
 # scope: hikka_min 1.2.10
@@ -25,8 +27,16 @@ class GPT4oReplyMod(loader.Module):
 
     strings = {
         "name": "GPT4oReply",
-        "error": "❌ <b>Не удалось сгенерировать ответ. Попробуйте позже.</b>",
+        "error": "❌ <b>Не удалось сгенерировать ответ: {error}</b>",
         "invalid_message": "❌ <b>Пожалуйста, ответьте на действительное сообщение.</b>",
+        "processing": "⏳ <b>Генерирую ответ</b>{dots}",
+    }
+
+    strings_ru = {
+        "error": "❌ <b>Не удалось сгенерировать ответ: {error}</b>",
+        "invalid_message": "❌ <b>Пожалуйста, ответьте на действительное сообщение.</b>",
+        "processing": "⏳ <b>Генерирую ответ</b>{dots}",
+        "_cls_doc": "Модуль для генерации ответов на сообщения с использованием GPT-4o API",
     }
 
     @loader.command(ru_doc="Сгенерировать ответ на сообщение")
@@ -43,9 +53,13 @@ class GPT4oReplyMod(loader.Module):
             await utils.answer(message, self.strings("invalid_message"))
             return
 
-        api_url = "https://api.paxsenix.biz.id/ai/gpt4o"
-        headers = {"Content-Type": "application/json"}
+        api_url = "https://api.paxsenix.biz.id/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer YOUR_API_KEY",
+        }
         payload = {
+            "model": "gpt-4o",
             "messages": [
                 {
                     "role": "user",
@@ -63,33 +77,58 @@ class GPT4oReplyMod(loader.Module):
             dots = ""
             while not animation_done:
                 dots = dots + "." if len(dots) < 4 else ""
-                await utils.answer(message, dots)
+                await utils.answer(message, self.strings("processing").format(dots=dots))
                 await asyncio.sleep(0.5)
 
         animation_done = False
         try:
-            # Запускаем анимацию в отдельной задаче
             animation_task = asyncio.create_task(animate_processing())
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(api_url, json=payload, headers=headers) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        if data.get("ok", False):
-                            generated_reply = data.get("message", "❌ <b>API не вернуло корректный ответ.</b>")
-                            animation_done = True  # Завершаем анимацию
-                            animation_task.cancel()
-                            await utils.answer(message, generated_reply)
-                        else:
+                        if not data.get("ok", False):
                             animation_done = True
                             animation_task.cancel()
-                            await utils.answer(message, self.strings("error"))
+                            await utils.answer(
+                                message,
+                                self.strings("error").format(error=data.get("message", "Unknown error")),
+                            )
+                            return
+
+                        generated_reply = data["choices"][0]["message"]["content"]
+
+                        animation_done = True
+                        animation_task.cancel()
+                        await utils.answer(message, generated_reply)
+                    elif resp.status == 400:
+                        data = await resp.json()
+                        animation_done = True
+                        animation_task.cancel()
+                        await utils.answer(
+                            message,
+                            self.strings("error").format(error=data.get("message", "Bad request")),
+                        )
+                    elif resp.status == 500:
+                        data = await resp.json()
+                        animation_done = True
+                        animation_task.cancel()
+                        await utils.answer(
+                            message,
+                            self.strings("error").format(error=data.get("message", "Server error")),
+                        )
                     else:
                         animation_done = True
                         animation_task.cancel()
-                        await utils.answer(message, self.strings("error"))
+                        await utils.answer(
+                            message,
+                            self.strings("error").format(error=f"HTTP {resp.status}"),
+                        )
         except Exception as e:
             animation_done = True
             animation_task.cancel()
-            await utils.answer(message, self.strings("error"))
-            raise e
+            await utils.answer(
+                message,
+                self.strings("error").format(error=str(e)),
+            )
